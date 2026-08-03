@@ -32,7 +32,7 @@ LLAISYS (Let's Learn AI SYStem) is an educational project that aims to provide a
 - Compile Tool: [Xmake](https://xmake.io/)
 - C++ Compiler: MSVC (Windows) or Clang or GCC
 - Python >= 3.9 (PyTorch, Transformers, etc.)
-- Clang-Format-16 (Optional): for formatting C++ codes.//nh
+- Clang-Format-16 (Optional): for formatting C++ codes.
 
 ### Task-0.2 Fork and Build LLAISYS
 
