@@ -175,8 +175,31 @@ bool Tensor::isContiguous() const {
 }
 
 tensor_t Tensor::permute(const std::vector<size_t> &order) const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
+    size_t ndim_ = _meta.shape.size();
+
+    // 1. 校验 order 长度
+    CHECK_ARGUMENT(order.size() == ndim_,
+                   "permute() order size must match tensor ndim");
+
+    // 2. 校验 order 是合法排列（无越界、无重复）
+    std::vector<bool> seen(ndim_, false);
+    for (size_t idx : order) {
+        CHECK_ARGUMENT(idx < ndim_, "permute() order index out of range");
+        CHECK_ARGUMENT(!seen[idx], "permute() order contains duplicate index");
+        seen[idx] = true;
+    }
+
+    // 3. 按 order 重排 shape 和 strides
+    std::vector<size_t> new_shape(ndim_);
+    std::vector<ptrdiff_t> new_strides(ndim_);
+    for (size_t i = 0; i < ndim_; i++) {
+        new_shape[i] = _meta.shape[order[i]];
+        new_strides[i] = _meta.strides[order[i]];
+    }
+
+    // 4. 构建新 TensorMeta，共享同一 _storage
+    TensorMeta new_meta{_meta.dtype, new_shape, new_strides};
+    return std::shared_ptr<Tensor>(new Tensor(new_meta, _storage, _offset));
 }
 
 tensor_t Tensor::view(const std::vector<size_t> &shape) const {
