@@ -42,7 +42,14 @@ class Qwen2:
 
     def __init__(self, model_path, device: DeviceType = DeviceType.CPU):
         if isinstance(device, str):
-            device = DeviceType.NVIDIA if device == "nvidia" else DeviceType.CPU
+            device_map = {
+                "cpu": DeviceType.CPU,
+                "nvidia": DeviceType.NVIDIA,
+                "iluvatar": DeviceType.ILUVATAR,
+            }
+            if device not in device_map:
+                raise ValueError(f"Unsupported Qwen2 device: {device}")
+            device = device_map[device]
 
         self.model_path = Path(model_path)
         self.device = DeviceType(device)

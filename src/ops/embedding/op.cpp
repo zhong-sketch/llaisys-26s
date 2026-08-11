@@ -4,6 +4,12 @@
 #include "../../utils.hpp"
 
 #include "cpu/embedding_cpu.hpp"
+#ifdef ENABLE_NVIDIA_API
+#include "nvidia/embedding_nvidia.cuh"
+#endif
+#ifdef ENABLE_ILUVATAR_API
+#include "iluvatar/embedding_iluvatar.hpp"
+#endif
 
 namespace llaisys::ops {
 void embedding(tensor_t out, tensor_t index, tensor_t weight) {
@@ -31,8 +37,13 @@ void embedding(tensor_t out, tensor_t index, tensor_t weight) {
                               n, embed_dim, elem_size);
 #ifdef ENABLE_NVIDIA_API
     case LLAISYS_DEVICE_NVIDIA:
-        TO_BE_IMPLEMENTED();
-        return;
+        return nvidia::embedding(out->data(), index->data(), weight->data(),
+                                 n, embed_dim, elem_size);
+#endif
+#ifdef ENABLE_ILUVATAR_API
+    case LLAISYS_DEVICE_ILUVATAR:
+        return iluvatar::embedding(out->data(), index->data(), weight->data(),
+                                   n, embed_dim, elem_size);
 #endif
     default:
         EXCEPTION_UNSUPPORTED_DEVICE;

@@ -24,11 +24,16 @@ def random_tensor(
 
     api = llaisys.RuntimeAPI(llaisys_device(device_name))
     bytes_ = torch_tensor.numel() * torch_tensor.element_size()
+    copy_kind = (
+        llaisys.MemcpyKind.D2D
+        if torch_tensor.device.type != "cpu"
+        else llaisys.MemcpyKind.H2D
+    )
     api.memcpy_sync(
         llaisys_tensor.data_ptr(),
         torch_tensor.data_ptr(),
         bytes_,
-        llaisys.MemcpyKind.D2D,
+        copy_kind,
     )
 
     return torch_tensor, llaisys_tensor
@@ -52,11 +57,16 @@ def random_int_tensor(shape, device_name, dtype_name="i64", device_id=0, low=0, 
 
     api = llaisys.RuntimeAPI(llaisys_device(device_name))
     bytes_ = torch_tensor.numel() * torch_tensor.element_size()
+    copy_kind = (
+        llaisys.MemcpyKind.D2D
+        if torch_tensor.device.type != "cpu"
+        else llaisys.MemcpyKind.H2D
+    )
     api.memcpy_sync(
         llaisys_tensor.data_ptr(),
         torch_tensor.data_ptr(),
         bytes_,
-        llaisys.MemcpyKind.D2D,
+        copy_kind,
     )
 
     return torch_tensor, llaisys_tensor
@@ -80,11 +90,16 @@ def zero_tensor(
 
     api = llaisys.RuntimeAPI(llaisys_device(device_name))
     bytes_ = torch_tensor.numel() * torch_tensor.element_size()
+    copy_kind = (
+        llaisys.MemcpyKind.D2D
+        if torch_tensor.device.type != "cpu"
+        else llaisys.MemcpyKind.H2D
+    )
     api.memcpy_sync(
         llaisys_tensor.data_ptr(),
         torch_tensor.data_ptr(),
         bytes_,
-        llaisys.MemcpyKind.D2D,
+        copy_kind,
     )
 
     return torch_tensor, llaisys_tensor
@@ -103,11 +118,16 @@ def arrange_tensor(
 
     api = llaisys.RuntimeAPI(llaisys_device(device_name))
     bytes_ = torch_tensor.numel() * torch_tensor.element_size()
+    copy_kind = (
+        llaisys.MemcpyKind.D2D
+        if torch_tensor.device.type != "cpu"
+        else llaisys.MemcpyKind.H2D
+    )
     api.memcpy_sync(
         llaisys_tensor.data_ptr(),
         torch_tensor.data_ptr(),
         bytes_,
-        llaisys.MemcpyKind.D2D,
+        copy_kind,
     )
 
     return torch_tensor, llaisys_tensor
@@ -132,20 +152,26 @@ def check_equal(
         else:  # TODO: Support negative strides in the future
             raise ValueError("Negative strides are not supported yet")
 
+    torch_dev = torch_device(
+        device_name(llaisys_result.device_type()), llaisys_result.device_id()
+    )
     tmp = torch.zeros(
         (right + 1,),
         dtype=torch_answer.dtype,
-        device=torch_device(
-            device_name(llaisys_result.device_type()), llaisys_result.device_id()
-        ),
+        device=torch_dev,
     )
     result = torch.as_strided(tmp, shape, strides)
     api = llaisys.RuntimeAPI(llaisys_result.device_type())
+    copy_kind = (
+        llaisys.MemcpyKind.D2D
+        if torch_dev.type != "cpu"
+        else llaisys.MemcpyKind.D2H
+    )
     api.memcpy_sync(
         result.data_ptr(),
         llaisys_result.data_ptr(),
         (right + 1) * tmp.element_size(),
-        llaisys.MemcpyKind.D2D,
+        copy_kind,
     )
 
     if strict:
@@ -188,6 +214,8 @@ def torch_device(device_name: str, device_id=0):
         return torch.device("cpu")
     elif device_name == "nvidia":
         return torch.device(f"cuda:{device_id}")
+    elif device_name == "iluvatar":
+        return torch.device("cpu")
     else:
         raise ValueError(f"Unsupported device name: {device_name}")
 
@@ -197,6 +225,8 @@ def llaisys_device(device_name: str):
         return llaisys.DeviceType.CPU
     elif device_name == "nvidia":
         return llaisys.DeviceType.NVIDIA
+    elif device_name == "iluvatar":
+        return llaisys.DeviceType.ILUVATAR
     else:
         raise ValueError(f"Unsupported device name: {device_name}")
 
@@ -206,6 +236,8 @@ def device_name(llaisys_device: llaisys.DeviceType):
         return "cpu"
     elif llaisys_device == llaisys.DeviceType.NVIDIA:
         return "nvidia"
+    elif llaisys_device == llaisys.DeviceType.ILUVATAR:
+        return "iluvatar"
     else:
         raise ValueError(f"Unsupported llaisys device: {llaisys_device}")
 

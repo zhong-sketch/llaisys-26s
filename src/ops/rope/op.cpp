@@ -4,6 +4,12 @@
 #include "../../utils.hpp"
 
 #include "cpu/rope_cpu.hpp"
+#ifdef ENABLE_NVIDIA_API
+#include "nvidia/rope_nvidia.cuh"
+#endif
+#ifdef ENABLE_ILUVATAR_API
+#include "iluvatar/rope_iluvatar.hpp"
+#endif
 
 namespace llaisys::ops {
 void rope(tensor_t out, tensor_t in, tensor_t pos_ids, float theta) {
@@ -32,8 +38,13 @@ void rope(tensor_t out, tensor_t in, tensor_t pos_ids, float theta) {
                          seqlen, nhead, d, theta, out->dtype());
 #ifdef ENABLE_NVIDIA_API
     case LLAISYS_DEVICE_NVIDIA:
-        TO_BE_IMPLEMENTED();
-        return;
+        return nvidia::rope(out->data(), in->data(), pos_ids->data(),
+                            seqlen, nhead, d, theta, out->dtype());
+#endif
+#ifdef ENABLE_ILUVATAR_API
+    case LLAISYS_DEVICE_ILUVATAR:
+        return iluvatar::rope(out->data(), in->data(), pos_ids->data(),
+                              seqlen, nhead, d, theta, out->dtype());
 #endif
     default:
         EXCEPTION_UNSUPPORTED_DEVICE;

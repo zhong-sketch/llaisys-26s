@@ -4,6 +4,12 @@
 #include "../../utils.hpp"
 
 #include "cpu/linear_cpu.hpp"
+#ifdef ENABLE_NVIDIA_API
+#include "nvidia/linear_nvidia.cuh"
+#endif
+#ifdef ENABLE_ILUVATAR_API
+#include "iluvatar/linear_iluvatar.hpp"
+#endif
 
 namespace llaisys::ops {
 void linear(tensor_t out, tensor_t in, tensor_t weight, tensor_t bias) {
@@ -35,8 +41,13 @@ void linear(tensor_t out, tensor_t in, tensor_t weight, tensor_t bias) {
                            M, N, K, out->dtype());
 #ifdef ENABLE_NVIDIA_API
     case LLAISYS_DEVICE_NVIDIA:
-        TO_BE_IMPLEMENTED();
-        return;
+        return nvidia::linear(out->data(), in->data(), weight->data(),
+                              bias_ptr, M, N, K, out->dtype());
+#endif
+#ifdef ENABLE_ILUVATAR_API
+    case LLAISYS_DEVICE_ILUVATAR:
+        return iluvatar::linear(out->data(), in->data(), weight->data(),
+                                bias_ptr, M, N, K, out->dtype());
 #endif
     default:
         EXCEPTION_UNSUPPORTED_DEVICE;
