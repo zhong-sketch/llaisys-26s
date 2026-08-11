@@ -129,13 +129,15 @@ case LLAISYS_DEVICE_ILUVATAR:
 3. Python 测试脚本可以接受 `--device iluvatar`。
 4. 本地 `--iluvatar-gpu=y` 可以编译通过，占位后端会被正确纳入工程。
 5. 本地无天数设备时，`test_runtime.py --device iluvatar` 能正常查询并跳过。
+6. 在 Gitee 天数实例中确认 `/usr/local/corex-4.4.0/include/cuda_runtime.h` 和 `/usr/local/corex-4.4.0/lib64/libcudart.so` 存在后，已将天数 Runtime 改为 CUDA 兼容实现。
+7. `test/test_runtime.py --device iluvatar` 已在天数实例中找到 1 张 `Iluvatar BI-V150` 设备并通过 Runtime 测试。
+8. 8 个天数算子已从“直接抛错”推进为功能 fallback：先从天数显存拷贝到 host，用已有 CPU 算子计算，再拷回天数显存。
 
 暂未完成：
 
-1. 未接入真实天数 SDK。
-2. 未实现真实天数显存分配、拷贝、stream、device context。
-3. 8 个天数算子目前都是占位实现，会提示需要先配置天数 SDK。
-4. 还不能证明 `--device iluvatar` 的真实计算结果与 PyTorch 对齐。
+1. 8 个天数算子当前是正确性优先的 D2H/CPU/H2D fallback，不是最终高性能 GPU kernel。
+2. 还未使用天数专用 kernel 编译器或高性能库实现算子。
+3. 完整 Qwen2 推理还需要在天数实例上继续验证算子组合路径。
 
 ## 验证结果
 
@@ -205,6 +207,66 @@ build ok
 install ok
 ```
 
+### 5. 天数 Runtime 实机验证
+
+在 Gitee 天数实例中执行：
+
+```bash
+source ~/.xmake/profile
+export PATH=/usr/local/corex/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/corex-4.4.0/lib64:/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
+
+xmake f --nv-gpu=n --iluvatar-gpu=y -cv
+xmake
+xmake install
+
+export PYTHONPATH=$PWD/python
+python test/test_runtime.py --device iluvatar
+```
+
+结果：
+
+```text
+Found 1 iluvatar devices
+Testing device {i}...
+Passed
+Test passed!
+```
+
+这说明天数 Runtime 的设备查询、设备上下文、显存分配、拷贝和 stream 基础能力已接通。
+
+### 6. 天数算子 fallback
+
+后续新增：
+
+```text
+src/ops/iluvatar/fallback.hpp
+```
+
+并将以下 8 个算子改为功能 fallback：
+
+```text
+add
+argmax
+embedding
+linear
+rms_norm
+rope
+self_attention
+swiglu
+```
+
+fallback 路径：
+
+```text
+Iluvatar device pointer
+  -> cudaMemcpy DeviceToHost
+  -> llaisys::ops::cpu::<op>()
+  -> cudaMemcpy HostToDevice
+```
+
+这一步的目标是先验证天数设备分发和算子测试链路，性能优化后续再把 fallback 替换为真实 GPU kernel。
+
 ## 后续在 Gitee 天数实例中要做的事
 
 1. 进入天数算力实例后确认真实工具链命令，例如 `ixsmi`、`ixcc` 或平台文档指定名称。
@@ -215,4 +277,4 @@ install ok
 
 ## 结论
 
-本次已经完成天数智芯后端的工程接入骨架，并确认它不会和 NVIDIA 后端冲突。当前成果属于“可编译、可分发、可进入测试入口”的占位版本；真正的天数算力验证需要等 Gitee 天数实例可用后继续完成。
+本次已经完成天数智芯后端的工程接入骨架，并确认它不会和 NVIDIA 后端冲突。当前 Runtime 已在 Gitee 天数实例中通过实机验证；算子层已具备正确性优先的 fallback 实现，下一步需要在天数实例上逐个运行 `test/ops/*.py --device iluvatar`，再决定是否继续替换为真实 GPU kernel。
