@@ -46,3 +46,4 @@ Iluvatar:
   `[151646, 151644, 15191, 525, 498, 30, 151645, 151648, 198, 91786]`
 - GitHub Actions currently validates CPU regression only because hosted runners do not provide NVIDIA or Iluvatar GPUs.
 - Detailed reproduction notes are included in `submission_reports/final/README.md` and `submission_reports/task4/README.md`.
+- The pull request is intended for `wooway777/llaisys-26s`, from `zhong-sketch:main`.
