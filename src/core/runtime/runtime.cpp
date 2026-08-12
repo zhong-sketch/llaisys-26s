@@ -12,13 +12,20 @@ Runtime::Runtime(llaisysDeviceType_t device_type, int device_id)
 }
 
 Runtime::~Runtime() {
-    if (!_is_active) {
-        std::cerr << "Mallicious destruction of inactive runtime." << std::endl;
-    }
     delete _allocator;
     _allocator = nullptr;
-    _api->destroy_stream(_stream);
+    if (_api != nullptr && _stream != nullptr) {
+        try {
+            _api->device_synchronize();
+        } catch (...) {
+        }
+        try {
+            _api->destroy_stream(_stream);
+        } catch (...) {
+        }
+    }
     _api = nullptr;
+    _stream = nullptr;
 }
 
 void Runtime::_activate() {

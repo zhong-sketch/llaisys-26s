@@ -98,10 +98,15 @@ class Qwen2:
         self._load_weights(config)
 
     def __del__(self):
+        # Release Tensor storage while the C++ runtime is still reachable.
+        weight_tensors = getattr(self, "_weight_tensors", None)
+        if weight_tensors is not None:
+            weight_tensors.clear()
         model = getattr(self, "_model", None)
         if model:
             LIB_LLAISYS.llaisysQwen2ModelDestroy(model)
             self._model = None
+        self._weights_ptr = None
 
     def _make_weight_tensor(self, tensor):
         if not tensor.is_contiguous():

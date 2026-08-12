@@ -100,4 +100,31 @@ python test/test_infer.py \
 
 ## 当前状态
 
-NVIDIA 代码路径已经在作业 #4 中实现，但当前环境没有 CUDA SDK，Gitee NVIDIA 算力也暂时售罄，因此暂时无法完成 NVIDIA 运行验证。
+NVIDIA 代码路径已经在作业 #4 中实现，并已在本机 NVIDIA GPU 上完成实机验证。
+
+验证环境：
+
+```text
+GPU: NVIDIA GeForce RTX 4070 Laptop GPU
+CUDA Toolkit: 12.8
+nvcc: 12.8.93
+PyTorch: 2.11.0+cu128
+Python venv: D:\LLAISYS\env\python\.venv-nvidia
+```
+
+已通过：
+
+```text
+test/test_runtime.py --device nvidia
+test/ops/add.py --device nvidia
+test/ops/argmax.py --device nvidia
+test/ops/embedding.py --device nvidia
+test/ops/linear.py --device nvidia
+test/ops/rms_norm.py --device nvidia
+test/ops/rope.py --device nvidia
+test/ops/self_attention.py --device nvidia
+test/ops/swiglu.py --device nvidia
+test/test_infer.py --model D:\LLAISYS\models\DeepSeek-R1-Distill-Qwen-1.5B --test --max_steps 1 --device nvidia
+```
+
+推理验证结果：LLAISYS 与 HuggingFace/PyTorch 生成 token 完全一致，测试进程退出码为 0。

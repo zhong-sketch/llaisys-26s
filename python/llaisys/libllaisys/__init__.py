@@ -15,6 +15,9 @@ from .tensor import load_tensor
 from .ops import load_ops
 
 
+_CUDA_DLL_DIRECTORY = None
+
+
 class LlaisysQwen2Meta(Structure):
     _fields_ = [
         ("dtype", llaisysDataType_t),
@@ -76,6 +79,7 @@ def load_qwen2(lib):
 
 
 def load_shared_library():
+    global _CUDA_DLL_DIRECTORY
     lib_dir = Path(__file__).parent
 
     if sys.platform.startswith("linux"):
@@ -91,6 +95,20 @@ def load_shared_library():
 
     if not os.path.isfile(lib_path):
         raise FileNotFoundError(f"Shared library not found: {lib_path}")
+
+    if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+        cuda_roots = []
+        cuda_path = os.environ.get("CUDA_PATH")
+        if cuda_path:
+            cuda_roots.append(Path(cuda_path))
+        cuda_roots.extend(
+            Path(r"C:\Program Files\NVIDIA GPU Computing Toolkit").glob("CUDA\\v*")
+        )
+        for cuda_root in cuda_roots:
+            cuda_bin = cuda_root / "bin"
+            if (cuda_bin / "cudart64_12.dll").is_file():
+                _CUDA_DLL_DIRECTORY = os.add_dll_directory(str(cuda_bin))
+                break
 
     return ctypes.CDLL(str(lib_path))
 

@@ -411,4 +411,4 @@ $env:PYTHONPATH='D:\LLAISYS\code\llaisys-26s\python'
 4. 使用 KV-Cache 支持 prompt prefill 和逐 token decode。
 5. 在 greedy 测试模式下与 HuggingFace 结果逐 token 对齐。
 
-当前验证重点是 CPU 路径；NVIDIA/GPU 路径仍取决于已有 CUDA runtime 和对应 GPU 算子实现。
+作业 #3 的原始验证重点是 CPU 路径；后续作业 #4 已在 NVIDIA 路径上补充验证了同一 Qwen2 最短推理链路。

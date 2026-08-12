@@ -4,46 +4,32 @@
 
 namespace llaisys::core {
 
-Context::Context() {
-    // All device types, put CPU at the end
-    std::vector<llaisysDeviceType_t> device_typs;
-    for (int i = 1; i < LLAISYS_DEVICE_TYPE_COUNT; i++) {
-        device_typs.push_back(static_cast<llaisysDeviceType_t>(i));
-    }
-    device_typs.push_back(LLAISYS_DEVICE_CPU);
+Context::Context() : _current_runtime(nullptr) {
+    // Keep the default path CPU-only. Other runtimes are created lazily by
+    // setDevice(), so importing the library does not initialize CUDA.
+    const LlaisysRuntimeAPI *api_ =
+        llaisys::device::getRuntimeAPI(LLAISYS_DEVICE_CPU);
+    const int device_count = api_->get_device_count();
+    CHECK_ARGUMENT(device_count > 0, "CPU runtime is unavailable");
 
-    // Create runtimes for each device type.
-    // Activate the first available device. If no other device is available, activate CPU runtime.
-    for (auto device_type : device_typs) {
-        const LlaisysRuntimeAPI *api_ = llaisysGetRuntimeAPI(device_type);
-        int device_count = api_->get_device_count();
-        std::vector<Runtime *> runtimes_(device_count);
-        for (int device_id = 0; device_id < device_count; device_id++) {
-
-            if (_current_runtime == nullptr) {
-                auto runtime = new Runtime(device_type, device_id);
-                runtime->_activate();
-                runtimes_[device_id] = runtime;
-                _current_runtime = runtime;
-            }
-        }
-        _runtime_map[device_type] = runtimes_;
-    }
+    auto &cpu_runtimes = _runtime_map[LLAISYS_DEVICE_CPU];
+    cpu_runtimes.resize(device_count);
+    cpu_runtimes[0] = new Runtime(LLAISYS_DEVICE_CPU, 0);
+    cpu_runtimes[0]->_activate();
+    _current_runtime = cpu_runtimes[0];
 }
 
 Context::~Context() {
-    // Destroy current runtime first.
-    delete _current_runtime;
-
     for (auto &runtime_entry : _runtime_map) {
-        std::vector<Runtime *> runtimes = runtime_entry.second;
-        for (auto runtime : runtimes) {
-            if (runtime != nullptr && runtime != _current_runtime) {
-                runtime->_activate();
+        for (auto &runtime : runtime_entry.second) {
+            if (runtime != nullptr) {
+                if (runtime != _current_runtime) {
+                    runtime->_activate();
+                }
                 delete runtime;
+                runtime = nullptr;
             }
         }
-        runtimes.clear();
     }
     _current_runtime = nullptr;
     _runtime_map.clear();
@@ -52,8 +38,14 @@ Context::~Context() {
 void Context::setDevice(llaisysDeviceType_t device_type, int device_id) {
     // If doest not match the current runtime.
     if (_current_runtime == nullptr || _current_runtime->deviceType() != device_type || _current_runtime->deviceId() != device_id) {
-        auto runtimes = _runtime_map[device_type];
-        CHECK_ARGUMENT((size_t)device_id < runtimes.size() && device_id >= 0, "invalid device id");
+        auto &runtimes = _runtime_map[device_type];
+        if (runtimes.empty()) {
+            const auto *api = llaisys::device::getRuntimeAPI(device_type);
+            const int device_count = api->get_device_count();
+            CHECK_ARGUMENT(device_count > 0, "requested device type is unavailable");
+            runtimes.resize(device_count);
+        }
+        CHECK_ARGUMENT(static_cast<size_t>(device_id) < runtimes.size() && device_id >= 0, "invalid device id");
         if (_current_runtime != nullptr) {
             _current_runtime->_deactivate();
         }

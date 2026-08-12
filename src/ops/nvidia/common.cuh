@@ -58,24 +58,56 @@ __device__ inline float f16BitsToFloat(uint16_t h) {
 __device__ inline uint16_t floatToF16Bits(float value) {
     const uint32_t x = __float_as_uint(value);
     const uint32_t sign = (x >> 16) & 0x8000u;
-    int32_t exp = static_cast<int32_t>((x >> 23) & 0xffu) - 127 + 15;
+    const uint32_t exp = (x >> 23) & 0xffu;
     uint32_t mant = x & 0x007fffffu;
 
-    if (exp <= 0) {
-        if (exp < -10) {
-            return static_cast<uint16_t>(sign);
+    if (exp == 0xffu) {
+        if (mant != 0) {
+            return static_cast<uint16_t>(sign | 0x7e00u);
         }
-        mant |= 0x00800000u;
-        const uint32_t shifted = mant >> static_cast<uint32_t>(1 - exp);
-        return static_cast<uint16_t>(sign | ((shifted + 0x00001000u) >> 13));
-    }
-    if (exp >= 31) {
         return static_cast<uint16_t>(sign | 0x7c00u);
     }
 
+    int32_t half_exp = static_cast<int32_t>(exp) - 127 + 15;
+    if (half_exp <= 0) {
+        if (half_exp < -10) {
+            return static_cast<uint16_t>(sign);
+        }
+
+        mant |= 0x00800000u;
+        const uint32_t shift = static_cast<uint32_t>(14 - half_exp);
+        const uint32_t half_mant = mant >> shift;
+        const uint32_t remainder = mant & ((1u << shift) - 1u);
+        const uint32_t halfway = 1u << (shift - 1u);
+        const bool round_up =
+            remainder > halfway ||
+            (remainder == halfway && (half_mant & 1u) != 0);
+        const uint32_t rounded = half_mant + (round_up ? 1u : 0u);
+        return static_cast<uint16_t>(sign | rounded);
+    }
+
+    if (half_exp >= 31) {
+        return static_cast<uint16_t>(sign | 0x7c00u);
+    }
+
+    uint32_t half_mant = mant >> 13;
+    const uint32_t remainder = mant & 0x1fffu;
+    const bool round_up =
+        remainder > 0x1000u ||
+        (remainder == 0x1000u && (half_mant & 1u) != 0);
+    if (round_up) {
+        ++half_mant;
+        if (half_mant == 0x400u) {
+            half_mant = 0;
+            ++half_exp;
+            if (half_exp >= 31) {
+                return static_cast<uint16_t>(sign | 0x7c00u);
+            }
+        }
+    }
+
     return static_cast<uint16_t>(
-        sign | (static_cast<uint32_t>(exp) << 10) |
-        ((mant + 0x00001000u) >> 13));
+        sign | (static_cast<uint32_t>(half_exp) << 10) | half_mant);
 }
 
 __device__ inline float bf16BitsToFloat(uint16_t h) {

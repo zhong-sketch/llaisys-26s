@@ -1,105 +1,103 @@
 # 作业 #4 提交简要报告
 
-## 1. 提交目标
+## 1. 目标
 
-本次作业目标是在 LLAISYS 中完成 GPU 后端接入验证，并按作业要求通过 Pull Request 提交到：
+作业 #4 要求在 LLAISYS 中接入 CUDA 或类 CUDA 平台，完成 Runtime API、GPU 算子和 GPU 推理验证，并在提交时逐个平台说明状态。
+
+本次最终覆盖的平台：
+
+| 平台 | 状态 |
+|---|---|
+| NVIDIA | 已在本机 RTX 4070 Laptop GPU 上通过 Runtime、8 个 CUDA 算子和 Qwen2 GPU 推理测试 |
+| 天数智芯 ILUVATAR | 已在 Gitee BI-V150 实例上通过 Runtime 和 8 个算子测试，算子为正确性优先 fallback |
+| CPU | 作为回归基线，Runtime、Tensor、8 个算子和 Qwen2 推理通过 |
+| 沐曦 | 仅保留计划，因算力不可用未执行 |
+
+## 2. NVIDIA 复现流程
+
+验证环境：
 
 ```text
-wooway777/llaisys-26s
+GPU: NVIDIA GeForce RTX 4070 Laptop GPU
+CUDA Toolkit: 12.8
+nvcc: 12.8.93
+PyTorch: 2.11.0+cu128
+Python: D:\LLAISYS\env\python\.venv-nvidia
+Model: D:\LLAISYS\models\DeepSeek-R1-Distill-Qwen-1.5B
 ```
 
-当前代码已提交并推送到个人 fork：
+构建：
+
+```powershell
+D:\LLAISYS\env\xmake\xmake.exe f --nv-gpu=y --iluvatar-gpu=n -cv
+D:\LLAISYS\env\xmake\xmake.exe -y
+D:\LLAISYS\env\xmake\xmake.exe install -y
+```
+
+测试：
+
+```powershell
+$py='D:\LLAISYS\env\python\.venv-nvidia\Scripts\python.exe'
+$env:PYTHONPATH='D:\LLAISYS\code\llaisys-26s\python'
+
+& $py test/test_runtime.py --device nvidia
+& $py test/ops/add.py --device nvidia
+& $py test/ops/argmax.py --device nvidia
+& $py test/ops/embedding.py --device nvidia
+& $py test/ops/linear.py --device nvidia
+& $py test/ops/rms_norm.py --device nvidia
+& $py test/ops/rope.py --device nvidia
+& $py test/ops/self_attention.py --device nvidia
+& $py test/ops/swiglu.py --device nvidia
+& $py test/test_infer.py --model D:\LLAISYS\models\DeepSeek-R1-Distill-Qwen-1.5B --test --max_steps 1 --device nvidia
+```
+
+结果：
 
 ```text
-zhong-sketch/llaisys-26s
+Found 1 nvidia devices
+all 8 nvidia op tests: Test passed!
+Qwen2 nvidia inference: Test passed!
+exit code: 0
 ```
 
-关键提交：
+推理输出 token 与 HuggingFace/PyTorch 对齐：
 
 ```text
-a147d46 Add task4 GPU backend scaffolding
-15c7f02 Enable Iluvatar CUDA-compatible runtime
-d98fb56 Add Iluvatar op fallback implementations
+[151646, 151644, 15191, 525, 498, 30, 151645, 151648, 198, 91786]
 ```
 
-## 2. 复现流程
+## 3. 天数智芯复现流程
 
-### 2.1 获取代码
+验证环境：
 
-在 Gitee 天数智芯算力实例中执行：
-
-```bash
-cd /data
-wget -O task4-fallback.tar.gz "https://github.com/zhong-sketch/llaisys-26s/archive/refs/heads/main.tar.gz?ts=$(date +%s)"
-tar -xzf task4-fallback.tar.gz
-mv llaisys-26s-main llaisys-26s-task4-fallback
-cd /data/llaisys-26s-task4-fallback
+```text
+Platform: Gitee compute instance
+GPU: Iluvatar BI-V150
+GPU memory: 32768 MiB
+Runtime: CoreX / CUDA-compatible runtime
+Python: 3.12.3
+PyTorch: 2.7.1
+torch.cuda.is_available(): True
 ```
 
-### 2.2 配置天数运行环境
+构建和环境：
 
 ```bash
 source ~/.xmake/profile
 export PATH=/usr/local/corex/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/corex-4.4.0/lib64:/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
 export PYTHONPATH=$PWD/python
-```
 
-天数环境检查结果：
-
-```text
-GPU: Iluvatar BI-V150
-GPU memory: 32768 MiB
-IX-ML: 4.4.0
-Driver Version: 4.4.0
-Python: 3.12.3
-PyTorch: 2.7.1
-torch.cuda.is_available(): True
-```
-
-确认到的 CUDA 兼容路径：
-
-```text
-/usr/local/corex-4.4.0/include/cuda_runtime.h
-/usr/local/corex-4.4.0/lib64/libcudart.so
-/usr/local/cuda-10.2/include/cuda_runtime.h
-```
-
-### 2.3 编译与安装
-
-```bash
 xmake f --nv-gpu=n --iluvatar-gpu=y -cv
 xmake
 xmake install
 ```
 
-复现结果：
-
-```text
-build ok
-install ok
-```
-
-### 2.4 Runtime 测试
+测试：
 
 ```bash
 python test/test_runtime.py --device iluvatar
-```
-
-复现结果：
-
-```text
-Found 1 iluvatar devices
-Testing device {i}...
-Passed
-Test passed!
-```
-
-### 2.5 算子测试
-
-已在天数实例上执行：
-
-```bash
 python test/ops/add.py --device iluvatar
 python test/ops/argmax.py --device iluvatar
 python test/ops/embedding.py --device iluvatar
@@ -110,101 +108,61 @@ python test/ops/self_attention.py --device iluvatar
 python test/ops/swiglu.py --device iluvatar
 ```
 
-复现结果：
+结果：
 
 ```text
-全部通过
+Found 1 iluvatar devices
+runtime test: Test passed!
+all 8 iluvatar op tests: Test passed!
 ```
 
-其中 `add` 测试覆盖了：
+说明：天数算子当前是正确性优先的 D2H/CPU/H2D fallback，用于验证 Python 前端、C API、C++ 调度、天数 Runtime、设备内存拷贝和结果对齐链路。它不是最终高性能原生天数 kernel。
 
-```text
-shape (2, 3), dtype f32/f16/bf16
-shape (512, 4096), dtype f32/f16/bf16
+## 4. CPU 回归
+
+```powershell
+$py='D:\LLAISYS\env\python\.venv-nvidia\Scripts\python.exe'
+$env:PYTHONPATH='D:\LLAISYS\code\llaisys-26s\python'
+
+& $py test/test_runtime.py --device cpu
+& $py test/test_tensor.py
+& $py test/ops/add.py --device cpu
+& $py test/ops/argmax.py --device cpu
+& $py test/ops/embedding.py --device cpu
+& $py test/ops/linear.py --device cpu
+& $py test/ops/rms_norm.py --device cpu
+& $py test/ops/rope.py --device cpu
+& $py test/ops/self_attention.py --device cpu
+& $py test/ops/swiglu.py --device cpu
+& $py test/test_infer.py --model D:\LLAISYS\models\DeepSeek-R1-Distill-Qwen-1.5B --test --max_steps 1 --device cpu
 ```
 
-## 3. 平台支持状态
+结果：全部通过，CPU Qwen2 推理与 HuggingFace/PyTorch token 一致，退出码为 0。
 
-| 平台 | 编译开关 | 状态 | 说明 |
-|---|---|---|---|
-| CPU | 默认 | 通过 | 本地 Windows + MSVC 下 `test_runtime.py --device cpu` 通过 |
-| NVIDIA | `--nv-gpu=y` | 已实现代码路径，未实机验证 | 本地无 CUDA SDK，Gitee NVIDIA 算力暂时不可用 |
-| 天数智芯 ILUVATAR | `--iluvatar-gpu=y` | Runtime 与 8 个算子测试通过 | 在 Gitee `Iluvatar BI-V150` 实例上通过 |
-| 沐曦 | 独立计划保留 | 未执行 | 算力暂时不可用，仅保留计划 |
+## 5. 实现说明
 
-## 4. 实现说明
+NVIDIA 后端：
 
-### 4.1 Runtime
+- `xmake/nvidia.lua` 配置 CUDA 编译、`cudart` 链接和 Windows `/MD` 编译选项。
+- `src/device/nvidia/` 实现 CUDA Runtime API。
+- `src/ops/*/nvidia/` 实现 `add`、`argmax`、`embedding`、`linear`、`rms_norm`、`rope`、`self_attention`、`swiglu`。
+- `src/ops/nvidia/common.cuh` 统一 dtype 转换、kernel launch 配置和 CUDA 错误检查。
 
-新增 `LLAISYS_DEVICE_ILUVATAR = 2`，并通过 `ENABLE_ILUVATAR_API` 与 `--iluvatar-gpu` 独立控制天数后端。
+天数后端：
 
-天数 Runtime 使用 CUDA 兼容 API：
+- 使用独立设备枚举 `LLAISYS_DEVICE_ILUVATAR`。
+- 使用独立编译开关 `--iluvatar-gpu` 和宏 `ENABLE_ILUVATAR_API`。
+- 使用 CUDA 兼容 Runtime 路径连接 Gitee BI-V150。
+- 8 个算子当前采用 fallback 验证正确性链路。
 
-```text
-cudaGetDeviceCount
-cudaSetDevice
-cudaMalloc / cudaFree
-cudaMallocHost / cudaFreeHost
-cudaMemcpy / cudaMemcpyAsync
-cudaStreamCreate / cudaStreamSynchronize / cudaStreamDestroy
-```
+通用修复：
 
-### 4.2 算子
+- Windows Python 加载共享库前自动加入 CUDA DLL 搜索路径。
+- Context 默认只初始化 CPU Runtime，GPU Runtime 在 `setDevice()` 时延迟创建。
+- Runtime 析构时同步并释放 stream，避免 Python 进程退出阶段崩溃。
+- NVIDIA fp16 转换改为符合 IEEE 754 的最近偶数舍入。
+- self-attention 测试中的 mask 跟随 query 设备创建，避免 CPU/GPU 张量混用。
 
-当前 8 个天数算子采用正确性优先的 fallback 实现：
+## 6. CI 说明
 
-```text
-Iluvatar device pointer
-  -> cudaMemcpy DeviceToHost
-  -> llaisys::ops::cpu::<op>()
-  -> cudaMemcpy HostToDevice
-```
-
-该实现可以验证 Python 前端、C API、C++ 调度、天数 Runtime、设备内存拷贝和算子结果对齐链路。后续性能优化可以将 fallback 替换为天数/CoreX 原生 GPU kernel。
-
-## 5. CI 状态
-
-作业要求 Pull Request 的 CI 必须通过。当前本地与天数实例测试均已通过；提交 PR 后，需要在 GitHub Pull Request 页面确认 CI 结果为绿色通过。
-
-建议 PR 提交后检查：
-
-```text
-Actions / Checks: all passed
-```
-
-## 6. PR 描述建议
-
-可将以下内容复制到 Pull Request 描述中：
-
-```markdown
-## Summary
-
-- Add NVIDIA CUDA backend scaffolding and operator implementations.
-- Add Iluvatar device type, runtime dispatch, xmake option, and Python test support.
-- Implement Iluvatar CUDA-compatible runtime using CoreX CUDA runtime paths.
-- Add correctness-first Iluvatar operator fallback implementations for add, argmax, embedding, linear, rms_norm, rope, self_attention, and swiglu.
-
-## Verification
-
-- CPU runtime test passed locally.
-- Gitee Iluvatar BI-V150 runtime test passed:
-  - Found 1 iluvatar devices
-  - test_runtime.py --device iluvatar passed
-- All Iluvatar op tests passed:
-  - add
-  - argmax
-  - embedding
-  - linear
-  - rms_norm
-  - rope
-  - self_attention
-  - swiglu
-
-## Platform Status
-
-- CPU: supported and tested.
-- NVIDIA: code path implemented, pending real CUDA machine validation.
-- Iluvatar: runtime and op fallback tests passed on Gitee BI-V150.
-- Muxi: plan documented, not executed due to unavailable compute.
-```
-
+GitHub Actions 当前只覆盖 CPU 测试，因为 GitHub 托管 runner 没有 NVIDIA 或天数智芯 GPU。GPU 部分通过本机 NVIDIA 和 Gitee 天数实例做实机验证；PR 发起后仍需要确认 GitHub Actions 的 CPU CI 为绿色。

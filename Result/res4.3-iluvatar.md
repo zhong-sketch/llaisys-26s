@@ -2,13 +2,11 @@
 
 ## 任务本质
 
-本次执行的目标不是在本机完成真实天数智芯 GPU kernel，而是先把 LLAISYS 的工程结构扩展成可以容纳天数后端的样子：设备枚举、Python 设备名、Xmake 开关、Runtime 分发、算子分发都单独走 `iluvatar` 路径。
+天数智芯计划的目标是让 LLAISYS 增加一个独立的 `iluvatar` 设备后端，使 Python 前端、C API、C++ 调度层、Runtime API 和算子入口都能通过统一接口访问天数算力。
 
-真实天数 SDK、编译器、头文件、库路径和 kernel API 需要等进入 Gitee 天数实例后再替换当前占位实现。
+## 冲突检查
 
-## 冲突检查结论
-
-NVIDIA 与天数计划可以同时保留在仓库中，不冲突。关键原因是二者使用完全独立的设备值、宏、开关和源码目录：
+NVIDIA 与天数后端可以同时保留在仓库中，不冲突：
 
 ```text
 NVIDIA:
@@ -26,224 +24,51 @@ ILUVATAR:
   src/ops/*/iluvatar/
 ```
 
-推荐不要在普通环境中同时打开两个 GPU 后端。分别使用：
+推荐按平台分别构建：
 
 ```bash
-# NVIDIA 环境
+# NVIDIA
 xmake f --nv-gpu=y --iluvatar-gpu=n -cv
 
-# 天数智芯环境
+# 天数智芯
 xmake f --nv-gpu=n --iluvatar-gpu=y -cv
 ```
 
 ## 修改/新建文件
 
-| 文件 | 操作 | 作用 |
-|---|---|---|
-| `include/llaisys.h` | 修改 | 新增 `LLAISYS_DEVICE_ILUVATAR = 2` |
-| `python/llaisys/libllaisys/llaisys_types.py` | 修改 | 新增 Python 侧 `DeviceType.ILUVATAR` |
-| `python/llaisys/models/qwen2.py` | 修改 | 支持字符串设备名 `"iluvatar"` |
-| `test/test_utils.py` | 修改 | 支持测试脚本将 `"iluvatar"` 映射到 LLAISYS 设备类型 |
-| `test/test_runtime.py`、`test/test_infer.py`、`test/ops/*.py` | 修改 | argparse 设备参数增加 `"iluvatar"` |
-| `src/device/runtime_api.hpp` | 修改 | 声明 `iluvatar::getRuntimeAPI()` |
-| `src/device/runtime_api.cpp` | 修改 | 新增 `LLAISYS_DEVICE_ILUVATAR` Runtime 分发 |
-| `xmake.lua` | 修改 | 新增 `--iluvatar-gpu` 编译开关 |
-| `xmake/iluvatar.lua` | 新建 | 定义天数 device/ops target |
-| `src/device/iluvatar/` | 新建 | 天数 Runtime 占位实现 |
-| `src/ops/iluvatar/unsupported.hpp` | 新建 | 天数算子占位错误提示 |
-| `src/ops/*/iluvatar/` | 新建 | 8 个算子的天数后端入口 |
-| `src/ops/*/op.cpp` | 修改 | 新增 `LLAISYS_DEVICE_ILUVATAR` 分发分支 |
-| `Result/res4.md` | 修改 | 补充 NVIDIA 计划与天数计划的隔离关系 |
+| 文件 | 作用 |
+|---|---|
+| `include/llaisys.h` | 新增 `LLAISYS_DEVICE_ILUVATAR = 2` |
+| `python/llaisys/libllaisys/llaisys_types.py` | 新增 Python 侧 `DeviceType.ILUVATAR` |
+| `python/llaisys/models/qwen2.py` | 支持字符串设备名 `"iluvatar"` |
+| `test/test_utils.py` | 支持测试脚本映射 `"iluvatar"` |
+| `test/test_runtime.py`、`test/test_infer.py`、`test/ops/*.py` | argparse 设备参数增加 `"iluvatar"` |
+| `src/device/runtime_api.hpp` | 声明 `iluvatar::getRuntimeAPI()` |
+| `src/device/runtime_api.cpp` | 新增 `LLAISYS_DEVICE_ILUVATAR` Runtime 分发 |
+| `xmake.lua` | 新增 `--iluvatar-gpu` 编译开关 |
+| `xmake/iluvatar.lua` | 定义天数 device/ops target |
+| `src/device/iluvatar/` | 天数 CUDA 兼容 Runtime |
+| `src/ops/*/iluvatar/` | 8 个天数算子入口和 fallback 实现 |
+| `src/ops/*/op.cpp` | 新增 `LLAISYS_DEVICE_ILUVATAR` 算子分发 |
 
-## 代码变化
+## 实现说明
 
-### 1. 新增设备类型
+### Runtime
 
-修改后：
-
-```cpp
-typedef enum {
-    LLAISYS_DEVICE_CPU = 0,
-    LLAISYS_DEVICE_NVIDIA = 1,
-    LLAISYS_DEVICE_ILUVATAR = 2,
-    LLAISYS_DEVICE_TYPE_COUNT
-} llaisysDeviceType_t;
-```
-
-含义：`ILUVATAR` 不复用 `NVIDIA` 的值，而是作为第三类设备进入统一 Runtime API。
-
-### 2. 新增 Xmake 开关
-
-修改后：
-
-```lua
-option("iluvatar-gpu")
-    set_default(false)
-    set_showmenu(true)
-    set_description("Whether to compile implementations for Iluvatar GPU")
-option_end()
-
-if has_config("iluvatar-gpu") then
-    add_defines("ENABLE_ILUVATAR_API")
-    includes("xmake/iluvatar.lua")
-end
-```
-
-含义：默认不编译天数后端；只有显式传入 `--iluvatar-gpu=y` 时，才会打开 `ENABLE_ILUVATAR_API` 并加入天数 target。
-
-### 3. 新增 Runtime 分发
-
-修改后：
-
-```cpp
-case LLAISYS_DEVICE_ILUVATAR:
-#ifdef ENABLE_ILUVATAR_API
-    return llaisys::device::iluvatar::getRuntimeAPI();
-#else
-    EXCEPTION_UNSUPPORTED_DEVICE;
-#endif
-```
-
-含义：上层看到 `DeviceType.ILUVATAR` 后，会进入天数 Runtime API；如果编译时没有启用天数后端，则保持“不支持该设备”的明确错误。
-
-### 4. 新增算子分发
-
-以 `add` 为例：
-
-```cpp
-#ifdef ENABLE_ILUVATAR_API
-case LLAISYS_DEVICE_ILUVATAR:
-    return iluvatar::add(c->data(), a->data(), b->data(),
-                         c->dtype(), c->numel());
-#endif
-```
-
-含义：调度层只负责把 `add` 分发到对应设备。当前 `iluvatar::add` 是占位实现，后续在天数实例中替换为真实天数 kernel。
-
-## 当前实现状态
-
-已完成：
-
-1. CPU、NVIDIA、ILUVATAR 三套设备类型不互相覆盖。
-2. `--nv-gpu` 和 `--iluvatar-gpu` 是独立 Xmake 开关。
-3. Python 测试脚本可以接受 `--device iluvatar`。
-4. 本地 `--iluvatar-gpu=y` 可以编译通过，占位后端会被正确纳入工程。
-5. 本地无天数设备时，`test_runtime.py --device iluvatar` 能正常查询并跳过。
-6. 在 Gitee 天数实例中确认 `/usr/local/corex-4.4.0/include/cuda_runtime.h` 和 `/usr/local/corex-4.4.0/lib64/libcudart.so` 存在后，已将天数 Runtime 改为 CUDA 兼容实现。
-7. `test/test_runtime.py --device iluvatar` 已在天数实例中找到 1 张 `Iluvatar BI-V150` 设备并通过 Runtime 测试。
-8. 8 个天数算子已从“直接抛错”推进为功能 fallback：先从天数显存拷贝到 host，用已有 CPU 算子计算，再拷回天数显存。
-
-暂未完成：
-
-1. 8 个天数算子当前是正确性优先的 D2H/CPU/H2D fallback，不是最终高性能 GPU kernel。
-2. 还未使用天数专用 kernel 编译器或高性能库实现算子。
-3. 完整 Qwen2 推理还需要在天数实例上继续验证算子组合路径。
-
-## 验证结果
-
-### 1. 空白检查
-
-```powershell
-git diff --check
-```
-
-结果：无空白错误；仅有 Windows 换行提示。
-
-### 2. CPU 默认路径验证
-
-```powershell
-D:\LLAISYS\env\xmake\xmake.exe f --nv-gpu=n --iluvatar-gpu=n -cv
-D:\LLAISYS\env\xmake\xmake.exe
-D:\LLAISYS\env\xmake\xmake.exe install
-$env:PYTHONPATH='D:\LLAISYS\code\llaisys-26s\python'
-D:\LLAISYS\env\python\.venv\Scripts\python.exe test/test_runtime.py --device cpu
-```
-
-结果：
+天数 Runtime 使用 CUDA 兼容 API 接通：
 
 ```text
-build ok
-install ok
-Found 1 cpu devices
-Test passed!
+cudaGetDeviceCount
+cudaSetDevice
+cudaMalloc / cudaFree
+cudaMallocHost / cudaFreeHost
+cudaMemcpy / cudaMemcpyAsync
+cudaStreamCreate / cudaStreamSynchronize / cudaStreamDestroy
 ```
 
-### 3. 天数占位后端编译验证
+### 算子
 
-```powershell
-D:\LLAISYS\env\xmake\xmake.exe f --nv-gpu=n --iluvatar-gpu=y -cv
-D:\LLAISYS\env\xmake\xmake.exe
-D:\LLAISYS\env\xmake\xmake.exe install
-$env:PYTHONPATH='D:\LLAISYS\code\llaisys-26s\python'
-D:\LLAISYS\env\python\.venv\Scripts\python.exe test/test_runtime.py --device iluvatar
-```
-
-结果：
-
-```text
-build ok
-install ok
-Found 0 iluvatar devices
-Skipped
-Test passed!
-```
-
-解释：这说明 `iluvatar` 设备入口、Python 参数、Runtime 分发都已经连上；但因为本机没有天数硬件和 SDK，所以设备数为 0，测试只验证了入口不崩溃，不代表真实天数计算已完成。
-
-### 4. 恢复默认 CPU 配置
-
-最后已执行：
-
-```powershell
-D:\LLAISYS\env\xmake\xmake.exe f --nv-gpu=n --iluvatar-gpu=n -cv
-D:\LLAISYS\env\xmake\xmake.exe
-D:\LLAISYS\env\xmake\xmake.exe install
-```
-
-结果：
-
-```text
-build ok
-install ok
-```
-
-### 5. 天数 Runtime 实机验证
-
-在 Gitee 天数实例中执行：
-
-```bash
-source ~/.xmake/profile
-export PATH=/usr/local/corex/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/corex-4.4.0/lib64:/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
-
-xmake f --nv-gpu=n --iluvatar-gpu=y -cv
-xmake
-xmake install
-
-export PYTHONPATH=$PWD/python
-python test/test_runtime.py --device iluvatar
-```
-
-结果：
-
-```text
-Found 1 iluvatar devices
-Testing device {i}...
-Passed
-Test passed!
-```
-
-这说明天数 Runtime 的设备查询、设备上下文、显存分配、拷贝和 stream 基础能力已接通。
-
-### 6. 天数算子 fallback
-
-后续新增：
-
-```text
-src/ops/iluvatar/fallback.hpp
-```
-
-并将以下 8 个算子改为功能 fallback：
+已覆盖 8 个作业算子：
 
 ```text
 add
@@ -256,7 +81,7 @@ self_attention
 swiglu
 ```
 
-fallback 路径：
+当前实现为正确性优先 fallback：
 
 ```text
 Iluvatar device pointer
@@ -265,16 +90,57 @@ Iluvatar device pointer
   -> cudaMemcpy HostToDevice
 ```
 
-这一步的目标是先验证天数设备分发和算子测试链路，性能优化后续再把 fallback 替换为真实 GPU kernel。
+这样可以验证设备分发、显存拷贝、统一 Runtime API 和结果正确性。后续性能优化可以将 fallback 替换为天数原生 GPU kernel。
 
-## 后续在 Gitee 天数实例中要做的事
+## 实机验证
 
-1. 进入天数算力实例后确认真实工具链命令，例如 `ixsmi`、`ixcc` 或平台文档指定名称。
-2. 将 `src/device/iluvatar/iluvatar_runtime_api.cpp` 从占位实现替换成真实 Runtime API。
-3. 将 `src/ops/*/iluvatar/*.cpp` 从占位实现替换成真实天数 kernel 或兼容 API 调用。
-4. 运行全部 `test/ops/*.py --device iluvatar`。
-5. 最后运行 `test/test_infer.py --device iluvatar --test --max_steps 1`，和 PyTorch 结果对齐。
+环境：
+
+```text
+Platform: Gitee compute instance
+GPU: Iluvatar BI-V150
+GPU memory: 32768 MiB
+Runtime: CoreX / CUDA-compatible runtime
+Python: 3.12.3
+PyTorch: 2.7.1
+torch.cuda.is_available(): True
+```
+
+构建：
+
+```bash
+source ~/.xmake/profile
+export PATH=/usr/local/corex/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/corex-4.4.0/lib64:/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
+export PYTHONPATH=$PWD/python
+
+xmake f --nv-gpu=n --iluvatar-gpu=y -cv
+xmake
+xmake install
+```
+
+测试：
+
+```bash
+python test/test_runtime.py --device iluvatar
+python test/ops/add.py --device iluvatar
+python test/ops/argmax.py --device iluvatar
+python test/ops/embedding.py --device iluvatar
+python test/ops/linear.py --device iluvatar
+python test/ops/rms_norm.py --device iluvatar
+python test/ops/rope.py --device iluvatar
+python test/ops/self_attention.py --device iluvatar
+python test/ops/swiglu.py --device iluvatar
+```
+
+结果：
+
+```text
+Found 1 iluvatar devices
+runtime test: Test passed!
+all 8 iluvatar op tests: Test passed!
+```
 
 ## 结论
 
-本次已经完成天数智芯后端的工程接入骨架，并确认它不会和 NVIDIA 后端冲突。当前 Runtime 已在 Gitee 天数实例中通过实机验证；算子层已具备正确性优先的 fallback 实现，下一步需要在天数实例上逐个运行 `test/ops/*.py --device iluvatar`，再决定是否继续替换为真实 GPU kernel。
+天数智芯后端已完成独立设备接入，并在 Gitee BI-V150 实机上通过 Runtime 和 8 个算子测试。当前版本的算子实现强调正确性和链路连通性，不代表最终高性能实现；这一点已在提交报告中明确说明。

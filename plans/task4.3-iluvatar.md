@@ -190,3 +190,28 @@ python test/test_infer.py \
 1. 本地没有天数 SDK，只能验证隔离设计和 CPU 不回归。
 2. 天数真实 SDK 函数名、头文件和链接库需要在 Gitee 实例中确认。
 3. 如果 PyTorch 不能直接识别天数设备，后续测试需要改为 CPU PyTorch 生成答案、天数后端执行、D2H 拷回后比较。
+
+## 当前执行状态
+
+已在 Gitee 天数智芯实例上完成实机验证：
+
+```text
+GPU: Iluvatar BI-V150
+Runtime: CoreX / CUDA-compatible runtime
+```
+
+已通过：
+
+```text
+test/test_runtime.py --device iluvatar
+test/ops/add.py --device iluvatar
+test/ops/argmax.py --device iluvatar
+test/ops/embedding.py --device iluvatar
+test/ops/linear.py --device iluvatar
+test/ops/rms_norm.py --device iluvatar
+test/ops/rope.py --device iluvatar
+test/ops/self_attention.py --device iluvatar
+test/ops/swiglu.py --device iluvatar
+```
+
+说明：当前天数算子采用 D2H/CPU/H2D fallback，验证的是设备接入、Runtime、显存拷贝、算子调度和正确性链路，不是最终高性能原生天数 kernel。
