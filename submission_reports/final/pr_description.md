@@ -1,9 +1,11 @@
+## LLAISYS Homework #1-#4 Submission
+
 ## Summary
 
-- Complete LLAISYS homework #1 tensor APIs: load, contiguous check, view, permute, and slice.
-- Complete homework #2 CPU operators: add, argmax, embedding, linear, rms_norm, rope, self_attention, and swiglu.
-- Complete homework #3 Qwen2 inference path with Python ctypes bindings, C API, C++ model forward, safetensors loading, and KV cache.
-- Complete homework #4 NVIDIA CUDA backend and Iluvatar backend integration.
+- Homework #1: complete tensor APIs for load, contiguous check, view, permute, and slice.
+- Homework #2: complete CPU operators for add, argmax, embedding, linear, rms_norm, rope, self_attention, and swiglu.
+- Homework #3: complete the Qwen2 inference path with Python ctypes bindings, C API, C++ model forward, safetensors loading, and KV cache.
+- Homework #4: complete NVIDIA CUDA backend and Iluvatar backend integration.
 
 ## Homework #4 Platform Coverage
 
@@ -45,5 +47,6 @@ Iluvatar:
 - CPU and NVIDIA Qwen2 inference both matched HuggingFace/PyTorch token output:
   `[151646, 151644, 15191, 525, 498, 30, 151645, 151648, 198, 91786]`
 - GitHub Actions currently validates CPU regression only because hosted runners do not provide NVIDIA or Iluvatar GPUs.
-- Detailed reproduction notes are included in `submission_reports/final/README.md` and `submission_reports/task4/README.md`.
+- Detailed reproduction report: `submission_reports/final/README.md`.
+- Homework #4 platform report: `submission_reports/task4/README.md`.
 - The pull request is intended for `wooway777/llaisys-26s`, from `zhong-sketch:main`.
